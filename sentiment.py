@@ -25,24 +25,53 @@ Return ONLY a JSON object with these fields:
 Return raw JSON only. No markdown, no explanation."""
 
 
+def _call_claude(client: anthropic.Anthropic, prompt: str) -> str:
+    """Send a prompt to Claude and return the raw response text."""
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=256,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.content[0].text
+
+
 def _parse_sentiment_response(raw: str) -> dict | None:
     """Parse Claude's response into a sentiment dict.
 
     Handles markdown code fences and malformed JSON gracefully.
+    Returns None if parsing or validation fails.
     """
     text = raw.strip()
     # Strip markdown code fences if present
     if text.startswith("```"):
         lines = text.split("\n")
         # Remove first line (```json) and last line (```)
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        lines = [line for line in lines if not line.strip().startswith("```")]
         text = "\n".join(lines).strip()
 
     try:
-        return json.loads(text)
+        data = json.loads(text)
     except json.JSONDecodeError:
-        logger.warning(f"Failed to parse sentiment JSON: {text[:100]}")
+        logger.warning("Failed to parse sentiment JSON: %s", text[:100])
         return None
+
+    # Validate required fields and types
+    score = data.get("sentiment_score")
+    if not isinstance(score, (int, float)) or score < -1.0 or score > 1.0:
+        logger.warning(
+            "Invalid sentiment_score (must be number in [-1.0, 1.0]): %s", score,
+        )
+        return None
+
+    if not isinstance(data.get("summary"), str):
+        logger.warning("Invalid or missing 'summary': expected string")
+        return None
+
+    if not isinstance(data.get("key_catalyst"), str):
+        logger.warning("Invalid or missing 'key_catalyst': expected string")
+        return None
+
+    return data
 
 
 def analyze(
@@ -65,13 +94,14 @@ def analyze(
     results = {}
 
     for symbol in tickers:
+        prompt = ""
         try:
             stock = yf.Ticker(symbol)
             news = stock.news or []
             headlines = [item.get("title", "") for item in news[:5]]
 
             if not headlines:
-                logger.warning(f"{symbol}: no news headlines found")
+                logger.warning("%s: no news headlines found", symbol)
                 results[symbol] = None
                 continue
 
@@ -80,37 +110,21 @@ def analyze(
                 ticker=symbol, headlines=headline_text,
             )
 
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=256,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            raw_text = response.content[0].text
-            parsed = _parse_sentiment_response(raw_text)
-
-            if parsed is not None:
-                results[symbol] = parsed
-            else:
-                results[symbol] = None
+            raw_text = _call_claude(client, prompt)
+            results[symbol] = _parse_sentiment_response(raw_text)
 
         except anthropic.RateLimitError:
-            logger.warning(f"{symbol}: rate limited, retrying in 2s...")
+            logger.warning("%s: rate limited, retrying in 2s...", symbol)
             time.sleep(2)
             try:
-                response = client.messages.create(
-                    model=MODEL,
-                    max_tokens=256,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                parsed = _parse_sentiment_response(response.content[0].text)
-                results[symbol] = parsed
+                raw_text = _call_claude(client, prompt)
+                results[symbol] = _parse_sentiment_response(raw_text)
             except Exception as e:
-                logger.error(f"{symbol}: retry failed: {e}")
+                logger.error("%s: retry failed: %s", symbol, e)
                 results[symbol] = None
 
         except Exception as e:
-            logger.error(f"{symbol}: sentiment analysis failed: {e}")
+            logger.error("%s: sentiment analysis failed: %s", symbol, e)
             results[symbol] = None
 
     return results
