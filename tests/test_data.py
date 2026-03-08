@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from data import compute_rsi, fetch_sp500_tickers
+from data import compute_rsi, fetch_sp500_tickers, fetch_stock_data
 
 
 def test_fetch_sp500_tickers_returns_list_of_strings():
@@ -45,3 +45,26 @@ def test_compute_rsi_insufficient_data():
     prices = pd.Series([1.0, 2.0, 3.0])  # Only 3 data points, need 15
     rsi = compute_rsi(prices, period=14)
     assert rsi is None
+
+
+def test_fetch_stock_data_returns_dataframe():
+    # Test with just 3 tickers to keep it fast
+    df = fetch_stock_data(["AAPL", "MSFT", "GOOGL"])
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) > 0  # At least some should succeed
+
+
+def test_fetch_stock_data_has_expected_columns():
+    df = fetch_stock_data(["AAPL"])
+    expected_cols = [
+        "ticker", "close", "sma_20", "sma_50", "rsi",
+        "volume", "avg_volume_20", "volume_ratio", "pe_ratio", "sector",
+    ]
+    for col in expected_cols:
+        assert col in df.columns, f"Missing column: {col}"
+
+
+def test_fetch_stock_data_skips_bad_tickers():
+    df = fetch_stock_data(["AAPL", "ZZZZZZNOTREAL"])
+    assert len(df) == 1  # Only AAPL should be present
+    assert df.iloc[0]["ticker"] == "AAPL"
