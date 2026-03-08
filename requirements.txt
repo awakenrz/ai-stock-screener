@@ -1,5 +1,6 @@
 yfinance
 pandas
+requests
 anthropic
 python-dotenv
 rich
