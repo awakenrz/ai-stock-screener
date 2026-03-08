@@ -48,7 +48,7 @@ def print_report(
         total_screened: Total number of stocks that were screened.
     """
     if screened_df.empty:
-        print(f"\nNo stocks matched all screening criteria today.")
+        print("\nNo stocks matched all screening criteria today.")
         print("Consider loosening one or more filters (e.g., volume_ratio >= 1.2).\n")
         return
 
@@ -85,7 +85,7 @@ def _print_rich(df: pd.DataFrame, sentiment: dict, total: int) -> None:
     for _, row in df.iterrows():
         ticker = row["ticker"]
         sent = sentiment.get(ticker)
-        score = sent["sentiment_score"] if sent else None
+        score = sent.get("sentiment_score") if sent else None
         color = _sentiment_color(score)
 
         table.add_row(
@@ -107,9 +107,9 @@ def _print_rich(df: pd.DataFrame, sentiment: dict, total: int) -> None:
             ticker = row["ticker"]
             sent = sentiment.get(ticker)
             if sent:
-                color = _sentiment_color(sent["sentiment_score"])
+                color = _sentiment_color(sent.get("sentiment_score"))
                 console.print(
-                    f"  [{color}]{ticker}[/{color}]: {sent['summary']}"
+                    f"  [{color}]{ticker}[/{color}]: {sent.get('summary', '')}"
                 )
             else:
                 console.print(f"  [dim]{ticker}[/dim]: Sentiment unavailable")
@@ -129,7 +129,7 @@ def _print_plain(df: pd.DataFrame, sentiment: dict, total: int) -> None:
     for _, row in df.iterrows():
         ticker = row["ticker"]
         sent = sentiment.get(ticker)
-        score = sent["sentiment_score"] if sent else None
+        score = sent.get("sentiment_score") if sent else None
 
         print(
             f"{ticker:<8} {row['close']:>8.2f} {row['pe_ratio']:>6.1f} "
@@ -142,5 +142,5 @@ def _print_plain(df: pd.DataFrame, sentiment: dict, total: int) -> None:
         ticker = row["ticker"]
         sent = sentiment.get(ticker)
         if sent:
-            print(f"  {ticker}: {sent['summary']}")
+            print(f"  {ticker}: {sent.get('summary', '')}")
     print()

@@ -1,7 +1,5 @@
 # tests/test_report.py
 import pandas as pd
-from io import StringIO
-from unittest.mock import patch
 from report import print_report
 
 
@@ -43,3 +41,26 @@ def test_print_report_handles_none_sentiment(capsys):
     print_report(df, sentiment, total_screened=503)
     captured = capsys.readouterr()
     assert "XYZ" in captured.out
+    assert "N/A" in captured.out
+
+
+def test_print_report_plain_fallback(capsys, monkeypatch):
+    monkeypatch.setattr("report.HAS_RICH", False)
+    df = pd.DataFrame([{
+        "ticker": "MSFT", "close": 420.50, "pe_ratio": 22.1,
+        "rsi": 48.0, "volume_ratio": 1.7, "sma_20": 418.0,
+        "sma_50": 415.0, "volume": 900_000,
+        "avg_volume_20": 500_000, "sector": "Technology",
+    }])
+    sentiment = {
+        "MSFT": {
+            "sentiment_score": -0.4,
+            "summary": "Bearish on cloud revenue miss",
+            "key_catalyst": "Cloud revenue miss",
+        }
+    }
+    print_report(df, sentiment, total_screened=503)
+    captured = capsys.readouterr()
+    assert "MSFT" in captured.out
+    assert "420.50" in captured.out
+    assert "AI Stock Screener" in captured.out
