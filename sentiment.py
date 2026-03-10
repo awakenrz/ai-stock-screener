@@ -3,6 +3,7 @@
 
 import json
 import os
+import sys
 import time
 import logging
 
@@ -96,8 +97,11 @@ def analyze(
         )
 
     results = {}
+    total = len(tickers)
 
-    for symbol in tickers:
+    for idx, symbol in enumerate(tickers):
+        print(f"\r  Sentiment analysis: {idx + 1}/{total} — {symbol}    ", end="", flush=True, file=sys.stderr)
+
         prompt = ""
         try:
             stock = yf.Ticker(symbol)
@@ -121,18 +125,46 @@ def analyze(
             raw_text = _call_claude(client, prompt)
             results[symbol] = _parse_sentiment_response(raw_text)
 
-        except anthropic.APIError:
-            logger.warning("%s: API error, retrying in 2s...", symbol)
-            time.sleep(2)
+        except anthropic.RateLimitError as e:
+            retry_after = int(e.response.headers.get("retry-after", "30"))
+            logger.warning("%s: rate limited, waiting %ds...", symbol, retry_after)
+            time.sleep(retry_after)
+            if not prompt:
+                logger.error("%s: no prompt to retry (error before prompt was built)", symbol)
+                results[symbol] = None
+                continue
             try:
                 raw_text = _call_claude(client, prompt)
                 results[symbol] = _parse_sentiment_response(raw_text)
-            except Exception as e:
-                logger.error("%s: retry failed: %s", symbol, e)
+            except Exception as retry_err:
+                logger.error("%s: retry failed: %s", symbol, retry_err)
+                results[symbol] = None
+
+        except anthropic.APIStatusError as e:
+            if e.status_code >= 500:
+                logger.warning("%s: server error (%d), retrying in 2s...", symbol, e.status_code)
+                time.sleep(2)
+                if not prompt:
+                    logger.error("%s: no prompt to retry (error before prompt was built)", symbol)
+                    results[symbol] = None
+                    continue
+                try:
+                    raw_text = _call_claude(client, prompt)
+                    results[symbol] = _parse_sentiment_response(raw_text)
+                except Exception as retry_err:
+                    logger.error("%s: retry failed: %s", symbol, retry_err)
+                    results[symbol] = None
+            else:
+                logger.error("%s: API error (%d): %s", symbol, e.status_code, e)
                 results[symbol] = None
 
         except Exception as e:
             logger.error("%s: sentiment analysis failed: %s", symbol, e)
             results[symbol] = None
 
+        # Throttle between Claude API calls (skip on last ticker)
+        if idx < total - 1:
+            time.sleep(0.5)
+
+    print(file=sys.stderr)  # newline after progress
     return results

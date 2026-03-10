@@ -8,6 +8,8 @@ import os
 import sys
 import logging
 
+import anthropic
+import requests
 from dotenv import load_dotenv
 
 from data import fetch_sp500_tickers, fetch_stock_data
@@ -63,10 +65,15 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nInterrupted by user.")
         sys.exit(130)
-    except Exception as e:
-        logger.error("Fatal error: %s", e)
-        print(f"\nError: {e}")
-        print("Check your network connection and try again.")
+    except requests.RequestException as e:
+        logger.error("Network error: %s", e)
+        print(f"\nNetwork error: {e}")
+        print("Check your internet connection and try again.")
+        sys.exit(1)
+    except anthropic.APIError as e:
+        logger.error("Anthropic API error: %s", e)
+        print(f"\nAnthropic API error: {e}")
+        print("Check your API key and try again.")
         sys.exit(1)
 
 
