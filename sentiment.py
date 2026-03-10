@@ -91,6 +91,7 @@ def analyze(
     """
     if client is None:
         client = anthropic.Anthropic(
+            api_key=os.getenv("ANTHROPIC_AUTH_TOKEN") or os.getenv("ANTHROPIC_API_KEY"),
             base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
         )
 

@@ -25,12 +25,13 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     load_dotenv()
 
-    # Check for API key
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    # Check for API key (support both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_API_KEY)
+    api_key = os.getenv("ANTHROPIC_AUTH_TOKEN") or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        print("Error: ANTHROPIC_API_KEY not set.")
-        print("1. Get a key at https://console.anthropic.com")
-        print("2. Add it to your .env file: ANTHROPIC_API_KEY=sk-ant-...")
+        print("Error: No Anthropic API key found.")
+        print("Set one of these environment variables:")
+        print("  ANTHROPIC_AUTH_TOKEN=sk-...  (e.g., for LiteLLM proxy)")
+        print("  ANTHROPIC_API_KEY=sk-ant-... (direct Anthropic API)")
         sys.exit(1)
 
     try:
