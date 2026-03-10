@@ -5,7 +5,6 @@ import logging
 import sys
 import time
 
-import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
@@ -62,6 +61,38 @@ def compute_rsi(prices: pd.Series, period: int = 14) -> float | None:
     return 100.0 - (100.0 / (1.0 + rs))
 
 
+def _fetch_single_ticker(symbol: str) -> dict | None:
+    """Fetch price data and fundamentals for a single ticker.
+
+    Returns a dict of computed metrics, or None if the ticker
+    has insufficient data.
+    """
+    stock = yf.Ticker(symbol)
+    hist = stock.history(period="3mo")  # ~60 trading days
+
+    if hist.empty or len(hist) < 20:
+        return None
+
+    close = hist["Close"]
+    volume = hist["Volume"]
+    info = stock.info or {}
+    avg_vol_20 = volume.rolling(20).mean().iloc[-1]
+
+    return {
+        "ticker": symbol,
+        "close": close.iloc[-1],
+        "sma_20": close.rolling(20).mean().iloc[-1],
+        "sma_50": close.rolling(50).mean().iloc[-1] if len(close) >= 50 else None,
+        "rsi": compute_rsi(close),
+        "volume": volume.iloc[-1],
+        "avg_volume_20": avg_vol_20,
+        "volume_ratio": volume.iloc[-1] / avg_vol_20
+            if avg_vol_20 > 0 else None,
+        "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
+        "sector": info.get("sector", "Unknown"),
+    }
+
+
 def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
     """Fetch price data and fundamentals for a list of tickers.
 
@@ -84,67 +115,23 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
         print(f"\r  Fetching stock data: {i + 1}/{total} ({pct}%) — {symbol}    ", end="", flush=True, file=sys.stderr)
 
         try:
-            stock = yf.Ticker(symbol)
-            hist = stock.history(period="3mo")  # ~60 trading days
-
-            if hist.empty or len(hist) < 20:
+            row = _fetch_single_ticker(symbol)
+            if row is None:
                 logger.warning(f"Skipping {symbol}: insufficient price data")
                 skipped += 1
                 continue
-
-            close = hist["Close"]
-            volume = hist["Volume"]
-
-            info = stock.info or {}
-
-            avg_vol_20 = volume.rolling(20).mean().iloc[-1]
-
-            row = {
-                "ticker": symbol,
-                "close": close.iloc[-1],
-                "sma_20": close.rolling(20).mean().iloc[-1],
-                "sma_50": close.rolling(50).mean().iloc[-1] if len(close) >= 50 else None,
-                "rsi": compute_rsi(close),
-                "volume": volume.iloc[-1],
-                "avg_volume_20": avg_vol_20,
-                "volume_ratio": volume.iloc[-1] / avg_vol_20
-                    if avg_vol_20 > 0 else None,
-                "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
-                "sector": info.get("sector", "Unknown"),
-            }
             rows.append(row)
 
-        except Exception as e:
-            # Retry once on rate-limit / transient errors
-            if "429" in str(e) or "Too Many Requests" in str(e):
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
                 logger.warning(f"{symbol}: rate limited, backing off 5s...")
                 time.sleep(5)
                 try:
-                    stock = yf.Ticker(symbol)
-                    hist = stock.history(period="3mo")
-                    if hist.empty or len(hist) < 20:
+                    row = _fetch_single_ticker(symbol)
+                    if row is None:
                         logger.warning(f"Skipping {symbol}: insufficient price data on retry")
                         skipped += 1
                         continue
-
-                    close = hist["Close"]
-                    volume = hist["Volume"]
-                    info = stock.info or {}
-                    avg_vol_20 = volume.rolling(20).mean().iloc[-1]
-
-                    row = {
-                        "ticker": symbol,
-                        "close": close.iloc[-1],
-                        "sma_20": close.rolling(20).mean().iloc[-1],
-                        "sma_50": close.rolling(50).mean().iloc[-1] if len(close) >= 50 else None,
-                        "rsi": compute_rsi(close),
-                        "volume": volume.iloc[-1],
-                        "avg_volume_20": avg_vol_20,
-                        "volume_ratio": volume.iloc[-1] / avg_vol_20
-                            if avg_vol_20 > 0 else None,
-                        "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
-                        "sector": info.get("sector", "Unknown"),
-                    }
                     rows.append(row)
                 except Exception as retry_err:
                     logger.warning(f"Skipping {symbol}: retry failed: {retry_err}")
@@ -152,6 +139,10 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
             else:
                 logger.warning(f"Skipping {symbol}: {e}")
                 skipped += 1
+
+        except Exception as e:
+            logger.warning(f"Skipping {symbol}: {e}")
+            skipped += 1
 
         # Rate limit: sleep between requests (skip on last ticker)
         if i < len(tickers) - 1:
