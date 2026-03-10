@@ -113,8 +113,8 @@ def analyze(
             raw_text = _call_claude(client, prompt)
             results[symbol] = _parse_sentiment_response(raw_text)
 
-        except anthropic.RateLimitError:
-            logger.warning("%s: rate limited, retrying in 2s...", symbol)
+        except anthropic.APIError:
+            logger.warning("%s: API error, retrying in 2s...", symbol)
             time.sleep(2)
             try:
                 raw_text = _call_claude(client, prompt)

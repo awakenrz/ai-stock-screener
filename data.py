@@ -92,6 +92,8 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
 
             info = stock.info or {}
 
+            avg_vol_20 = volume.rolling(20).mean().iloc[-1]
+
             row = {
                 "ticker": symbol,
                 "close": close.iloc[-1],
@@ -99,9 +101,9 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
                 "sma_50": close.rolling(50).mean().iloc[-1] if len(close) >= 50 else None,
                 "rsi": compute_rsi(close),
                 "volume": volume.iloc[-1],
-                "avg_volume_20": volume.rolling(20).mean().iloc[-1],
-                "volume_ratio": volume.iloc[-1] / volume.rolling(20).mean().iloc[-1]
-                    if volume.rolling(20).mean().iloc[-1] > 0 else None,
+                "avg_volume_20": avg_vol_20,
+                "volume_ratio": volume.iloc[-1] / avg_vol_20
+                    if avg_vol_20 > 0 else None,
                 "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
                 "sector": info.get("sector", "Unknown"),
             }

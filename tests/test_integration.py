@@ -1,11 +1,8 @@
 # tests/test_integration.py
 """Integration test that runs the full pipeline with mocked network calls."""
 
-from unittest.mock import patch, MagicMock
 import pandas as pd
-from data import fetch_sp500_tickers, fetch_stock_data, compute_rsi
 from filters import screen
-from sentiment import _parse_sentiment_response
 from report import print_report
 
 
