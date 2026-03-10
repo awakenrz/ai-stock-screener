@@ -102,7 +102,12 @@ def analyze(
         try:
             stock = yf.Ticker(symbol)
             news = stock.news or []
-            headlines = [item.get("title", "") for item in news[:5]]
+            headlines = [
+                item.get("content", {}).get("title", "")
+                or item.get("title", "")
+                for item in news[:5]
+            ]
+            headlines = [h for h in headlines if h]
 
             if not headlines:
                 logger.warning("%s: no news headlines found", symbol)

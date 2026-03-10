@@ -30,8 +30,8 @@ def test_analyze_returns_dict_with_mock():
     mock_client.messages.create.return_value = mock_response
 
     mock_news = [
-        {"title": "Stock surges on earnings beat"},
-        {"title": "Company announces new partnership"},
+        {"content": {"title": "Stock surges on earnings beat"}},
+        {"content": {"title": "Company announces new partnership"}},
     ]
 
     with patch("sentiment.yf.Ticker") as mock_ticker:
