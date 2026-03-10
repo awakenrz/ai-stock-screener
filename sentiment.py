@@ -2,6 +2,7 @@
 """Claude AI sentiment analysis for stock news headlines."""
 
 import json
+import os
 import time
 import logging
 
@@ -89,7 +90,9 @@ def analyze(
         or ticker -> None if analysis failed.
     """
     if client is None:
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(
+            base_url=os.getenv("ANTHROPIC_BASE_URL") or None,
+        )
 
     results = {}
 
