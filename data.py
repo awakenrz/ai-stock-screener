@@ -115,8 +115,43 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
             rows.append(row)
 
         except Exception as e:
-            logger.warning(f"Skipping {symbol}: {e}")
-            skipped += 1
+            # Retry once on rate-limit / transient errors
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                logger.warning(f"{symbol}: rate limited, backing off 5s...")
+                time.sleep(5)
+                try:
+                    stock = yf.Ticker(symbol)
+                    hist = stock.history(period="3mo")
+                    if hist.empty or len(hist) < 20:
+                        logger.warning(f"Skipping {symbol}: insufficient price data on retry")
+                        skipped += 1
+                        continue
+
+                    close = hist["Close"]
+                    volume = hist["Volume"]
+                    info = stock.info or {}
+                    avg_vol_20 = volume.rolling(20).mean().iloc[-1]
+
+                    row = {
+                        "ticker": symbol,
+                        "close": close.iloc[-1],
+                        "sma_20": close.rolling(20).mean().iloc[-1],
+                        "sma_50": close.rolling(50).mean().iloc[-1] if len(close) >= 50 else None,
+                        "rsi": compute_rsi(close),
+                        "volume": volume.iloc[-1],
+                        "avg_volume_20": avg_vol_20,
+                        "volume_ratio": volume.iloc[-1] / avg_vol_20
+                            if avg_vol_20 > 0 else None,
+                        "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
+                        "sector": info.get("sector", "Unknown"),
+                    }
+                    rows.append(row)
+                except Exception as retry_err:
+                    logger.warning(f"Skipping {symbol}: retry failed: {retry_err}")
+                    skipped += 1
+            else:
+                logger.warning(f"Skipping {symbol}: {e}")
+                skipped += 1
 
         # Rate limit: sleep between requests (skip on last ticker)
         if i < len(tickers) - 1:
