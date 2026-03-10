@@ -3,6 +3,7 @@
 
 import json
 import os
+import sys
 import time
 import logging
 
@@ -96,8 +97,11 @@ def analyze(
         )
 
     results = {}
+    total = len(tickers)
 
-    for symbol in tickers:
+    for idx, symbol in enumerate(tickers):
+        print(f"\r  Sentiment analysis: {idx + 1}/{total} — {symbol}    ", end="", flush=True, file=sys.stderr)
+
         prompt = ""
         try:
             stock = yf.Ticker(symbol)
@@ -121,6 +125,17 @@ def analyze(
             raw_text = _call_claude(client, prompt)
             results[symbol] = _parse_sentiment_response(raw_text)
 
+        except anthropic.RateLimitError as e:
+            retry_after = int(e.response.headers.get("retry-after", "30"))
+            logger.warning("%s: rate limited, waiting %ds...", symbol, retry_after)
+            time.sleep(retry_after)
+            try:
+                raw_text = _call_claude(client, prompt)
+                results[symbol] = _parse_sentiment_response(raw_text)
+            except Exception as retry_err:
+                logger.error("%s: retry failed: %s", symbol, retry_err)
+                results[symbol] = None
+
         except anthropic.APIError:
             logger.warning("%s: API error, retrying in 2s...", symbol)
             time.sleep(2)
@@ -135,4 +150,5 @@ def analyze(
             logger.error("%s: sentiment analysis failed: %s", symbol, e)
             results[symbol] = None
 
+    print(file=sys.stderr)  # newline after progress
     return results

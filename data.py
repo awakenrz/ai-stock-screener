@@ -2,6 +2,7 @@
 
 import io
 import logging
+import sys
 import time
 
 import numpy as np
@@ -76,8 +77,12 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
     """
     rows = []
     skipped = 0
+    total = len(tickers)
 
     for i, symbol in enumerate(tickers):
+        pct = (i + 1) * 100 // total
+        print(f"\r  Fetching stock data: {i + 1}/{total} ({pct}%) — {symbol}    ", end="", flush=True, file=sys.stderr)
+
         try:
             stock = yf.Ticker(symbol)
             hist = stock.history(period="3mo")  # ~60 trading days
@@ -120,4 +125,5 @@ def fetch_stock_data(tickers: list[str]) -> pd.DataFrame:
     if skipped > 0:
         logger.info(f"Skipped {skipped}/{len(tickers)} tickers due to errors")
 
+    print(file=sys.stderr)  # newline after progress
     return pd.DataFrame(rows)
